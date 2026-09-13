@@ -14,3 +14,4 @@ models/*.onnx
 *.pdf
 data/real/
 .env
+site/

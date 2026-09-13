@@ -8,6 +8,12 @@ Booking list와 예비 플랜(팔레트별 AWB 배정)을 받아서, 각 팔레�
 2단계: 같은 환경 위에서 배치 순서·위치를 학습하는 모델(3D bin packing + RL).
 3단계: 3D Build-Up 에 붙여서 결과를 눈으로 확인.
 
+## 데모
+
+https://s-arrighetti.github.io/buildup_learning/ (합성 샘플 내장 뷰어).
+`viewer.html` 은 빈 뷰어라, 로컬에서 만든 `--json` 결과를 끌어다 놓으면 브라우저 안에서만 렌더링된다 (업로드 없음).
+`main` 에 푸시하면 `.github/workflows/pages.yml` 이 테스트 → `tools/build_pages.py` → 배포를 돌린다.
+
 ## 사용
 
 ```bash
