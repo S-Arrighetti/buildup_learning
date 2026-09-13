@@ -11,10 +11,12 @@ class HeightMap:
     좌표계: 팔레트 모서리가 (0, 0). 오버행 구역은 음수 좌표."""
 
     def __init__(self, length_cm: float, width_cm: float, limit: np.ndarray | float,
-                 cell_cm: float = 5.0, overhang: dict[str, float] | float | None = None):
+                 cell_cm: float = 5.0, overhang: dict[str, float] | float | None = None,
+                 overhang_slope: float = 1.0):
         self.length_cm = float(length_cm)
         self.width_cm = float(width_cm)
         self.overhang = parse_overhang(overhang)
+        self.overhang_slope = float(overhang_slope)   # 오버행 d cm → 바닥 높이 z >= d * slope
         self.geom = geometry(length_cm, width_cm, cell_cm, self.overhang)
         self.cell = self.geom.cell
         self.nx, self.ny = self.geom.nx, self.geom.ny
@@ -76,6 +78,12 @@ class HeightMap:
         in_x = (xs >= -ov["x0"] - 1e-6) & (xs + l <= self.length_cm + ov["x1"] + 1e-6)
         in_y = (ys >= -ov["y0"] - 1e-6) & (ys + w <= self.width_cm + ov["y1"] + 1e-6)
         fits &= in_x[:, None] & in_y[None, :]
+        # 오버행 경사: 튀어나온 거리 d 만큼 바닥이 떠 있어야 한다 (z >= d * slope)
+        if self.overhang_slope > 0:
+            dx = np.maximum(np.maximum(-xs, xs + l - self.length_cm), 0.0)
+            dy = np.maximum(np.maximum(-ys, ys + w - self.width_cm), 0.0)
+            need = np.maximum(dx[:, None], dy[None, :]) * self.overhang_slope
+            fits &= base + 1e-6 >= need
         b = base[:, :, None, None]
         floor_win = sliding_window_view(self.floor, (li, lj))
         supported = (win >= b - 1e-6) & (floor_win | (b > 1e-6))
@@ -104,7 +112,7 @@ class HeightMap:
             self.limit[i:i + li, j:j + lj] = np.minimum(self.limit[i:i + li, j:j + lj], z + h)
         p = Placement(pid=piece.pid, awb=piece.awb,
                       x=(i - self.geom.ox) * self.cell, y=(j - self.geom.oy) * self.cell, z=z,
-                      l=l, w=w, h=h, weight=piece.weight)
+                      l=l, w=w, h=h, weight=piece.weight, estimated=piece.estimated)
         self.placements.append(p)
         self.placed_weight += piece.weight
         self.placed_volume += piece.volume_cm3
