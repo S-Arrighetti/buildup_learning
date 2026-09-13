@@ -60,10 +60,40 @@ class HeightMapTest(unittest.TestCase):
     def test_chamfer_limit_map(self):
         pallets, contours = load_pallets(), load_contours()
         lim = limit_map(pallets["PMC"], contours["LD_160_CHAMFER"], 5)
-        self.assertEqual(lim.shape, (64, 49))
+        self.assertEqual(lim.shape, (64 + 4, 49 + 4))   # 10cm 오버행 = 양쪽 2셀씩
         self.assertEqual(lim[:, 0].min(), 160)     # y0 쪽은 풀 높이
-        self.assertLess(lim[:, -1].max(), 160)     # y1 가장자리는 깎임
-        self.assertEqual(lim[:, -1].max(), 100)
+        self.assertEqual(lim[:, 50].max(), 100)    # y1 팔레트 가장자리 셀 = 100
+        self.assertEqual(lim[:, -1].max(), 80)     # y1 오버행 끝 셀 (-10cm) = 80
+
+    def test_overhang_allowed_with_support(self):
+        # 100x100 팔레트, 오버행 10cm 전 면 → 격자 120x120. 110 길이 박스는 오버행으로 들어감 (지지 91%)
+        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=10)
+        self.assertEqual((hm.nx, hm.ny), (24, 24))
+        # 팔레트 밖 바닥은 지지력 없음: 10x10 박스를 오버행 구역에만 놓는 건 불가
+        base, ok = hm.candidates(10, 10, 10)
+        self.assertFalse(ok[0, 0])                 # 격자 모서리 = 완전히 팔레트 밖
+        self.assertTrue(ok[2, 2])                  # 팔레트 모서리
+        self.assertIsNone(hm.best_position(125, 50, 30))   # 오버행 합쳐도 120 까지
+        pos = hm.best_position(110, 50, 30)
+        self.assertIsNotNone(pos)
+        i, j, z = pos
+        p = hm.place(box("a", 110, 50, 30), i, j, z, 110, 50, 30)
+        self.assertLessEqual(p.x, 0)               # 팔레트 모서리 기준 음수 = 튀어나감
+
+    def test_overhang_support_threshold(self):
+        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=50)
+        # 100 길이 박스를 절반 걸치면 지지 50% → 불가, 30% 만 걸치면 70% → 가능
+        base, ok = hm.candidates(100, 50, 30, min_support=0.7)
+        ox = hm.geom.ox
+        self.assertFalse(ok[ox - 10, ox])          # 50cm 튀어나감
+        self.assertTrue(ok[ox - 6, ox])            # 30cm 튀어나감
+
+    def test_no_overhang_contour(self):
+        pallets, contours = load_pallets(), load_contours()
+        c = contours["NO_OVERHANG_160"]
+        hm = HeightMap(318, 244, limit_map(pallets["PMC"], c, 5), 5, c.overhang)
+        self.assertEqual((hm.nx, hm.ny), (64, 49))
+        self.assertIsNone(hm.best_position(320, 50, 30))
 
 
 class PackerTest(unittest.TestCase):
@@ -120,7 +150,7 @@ class CheckerTest(unittest.TestCase):
         booking = [BookingLine("A", 2, 318, 244, 100, 1000.0, None, "")]
         plan = [PlanEntry("PMC1", "PMC", "LD_160_FLAT", [("A", None)]),
                 PlanEntry("PMC2", "PMC", "LD_160_FLAT", [])]
-        rep = check(booking, plan)
+        rep = check(booking, plan, overhang_cm=0)
         self.assertEqual(rep.ulds[0].status, "OVER")
         self.assertEqual(rep.overall, "OVER")
         mv = [s for s in rep.suggestions if s.uld_to == "PMC2"]

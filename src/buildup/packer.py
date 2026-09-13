@@ -37,7 +37,7 @@ def _oversize(p: Piece, hm: HeightMap, allow_tip: bool) -> bool:
     """어떤 방향으로도 팔레트/컨투어 안에 들어갈 수 없는 크기인지."""
     hmax = float(hm.limit.max())
     for (l, w, h) in orientations(p, allow_tip):
-        if l <= hm.length_cm and w <= hm.width_cm and h <= hmax:
+        if l <= hm.grid_length_cm and w <= hm.grid_width_cm and h <= hmax:
             return False
     return True
 

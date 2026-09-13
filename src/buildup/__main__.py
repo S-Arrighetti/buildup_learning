@@ -24,6 +24,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--pallets", help="팔레트 정의 JSON (기본 내장)")
     c.add_argument("--contours", help="컨투어 정의 JSON (기본 내장)")
     c.add_argument("--risk", type=float, default=0.85, help="RISK 판정 용적률 (기본 0.85)")
+    c.add_argument("--overhang", type=float, default=None, help="오버행 허용 cm (전 면 동일, 컨투어 설정 덮어씀)")
 
     g = sub.add_parser("gen", help="합성 booking.csv / plan.csv 생성")
     g.add_argument("--seed", type=int, default=0)
@@ -45,7 +46,8 @@ def main(argv: list[str] | None = None) -> int:
 
     cfg = PackConfig(cell_cm=a.cell, min_support=a.support, allow_tip=a.tip, order=a.order)
     rep = check(read_booking(a.booking), read_plan(a.plan), cfg,
-                load_pallets(a.pallets), load_contours(a.contours), risk_threshold=a.risk)
+                load_pallets(a.pallets), load_contours(a.contours), risk_threshold=a.risk,
+                overhang_cm=a.overhang)
     print(format_text(rep))
     if a.json:
         with open(a.json, "w", encoding="utf-8") as f:

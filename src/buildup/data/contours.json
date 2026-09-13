@@ -1,6 +1,7 @@
 {
-  "_note": "profile = [[가장자리에서의 거리 cm, 허용 높이 cm], ...]. 마지막 점 이후는 height_cm. side: x0/x1 = 길이 방향 양끝, y0/y1 = 폭 방향 양끝. 값은 예시.",
-  "LD_160_FLAT": { "height_cm": 160, "side": null, "profile": [] },
-  "LD_160_CHAMFER": { "height_cm": 160, "side": "y1", "profile": [[0, 100], [45, 160]] },
-  "MD_244_FLAT": { "height_cm": 244, "side": null, "profile": [] }
+  "_note": "값은 예시. profile = [[팔레트 가장자리에서의 거리 cm, 허용 높이 cm], ...] (음수 = 오버행 구역), 마지막 점 이후는 height_cm. side: x0/x1 = 길이 방향 양끝, y0/y1 = 폭 방향 양끝. overhang_cm: 숫자(전 면 동일) 또는 {x0,x1,y0,y1}.",
+  "LD_160_FLAT": { "height_cm": 160, "side": null, "profile": [], "overhang_cm": 10 },
+  "LD_160_CHAMFER": { "height_cm": 160, "side": "y1", "profile": [[-10, 80], [0, 100], [45, 160]], "overhang_cm": 10 },
+  "MD_244_FLAT": { "height_cm": 244, "side": null, "profile": [], "overhang_cm": 10 },
+  "NO_OVERHANG_160": { "height_cm": 160, "side": null, "profile": [], "overhang_cm": 0 }
 }
