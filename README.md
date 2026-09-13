@@ -1,4 +1,4 @@
-# buildup-check
+# buildup_learning
 
 Booking list와 예비 플랜(팔레트별 배정)을 받아서, 각 팔레트에 배정된 화물이
 실제로 들어가는지(높이 160 컨투어, 팔레트 사이즈, 총중량) 검사하고,
