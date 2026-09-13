@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.ipynb_checkpoints/
+runs/
+models/*.pt
+models/*.onnx
+*.xlsx
+*.xls
+*.pdf
+data/real/
+.env
