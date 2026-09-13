@@ -1,19 +1,24 @@
 from __future__ import annotations
-from math import ceil
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 from .models import Piece, Placement
+from .uld import geometry, parse_overhang
 
 
 class HeightMap:
-    """팔레트 바닥 격자. height = 현재 적재 높이, limit = 컨투어 허용 높이 (둘 다 cm)."""
+    """팔레트 격자 (바닥 + 오버행 구역).
+    height = 현재 적재 높이, limit = 컨투어 허용 높이 (cm). floor = 팔레트 바닥인 셀 (바닥 밖은 지지력 없음).
+    좌표계: 팔레트 모서리가 (0, 0). 오버행 구역은 음수 좌표."""
 
-    def __init__(self, length_cm: float, width_cm: float, limit: np.ndarray | float, cell_cm: float = 5.0):
-        self.cell = float(cell_cm)
+    def __init__(self, length_cm: float, width_cm: float, limit: np.ndarray | float,
+                 cell_cm: float = 5.0, overhang: dict[str, float] | float | None = None):
         self.length_cm = float(length_cm)
         self.width_cm = float(width_cm)
-        self.nx = ceil(length_cm / cell_cm)
-        self.ny = ceil(width_cm / cell_cm)
+        self.overhang = parse_overhang(overhang)
+        self.geom = geometry(length_cm, width_cm, cell_cm, self.overhang)
+        self.cell = self.geom.cell
+        self.nx, self.ny = self.geom.nx, self.geom.ny
+        self.floor = self.geom.floor_mask()
         self.height = np.zeros((self.nx, self.ny), dtype=np.float32)
         if np.isscalar(limit):
             self.limit = np.full((self.nx, self.ny), float(limit), dtype=np.float32)
@@ -27,7 +32,15 @@ class HeightMap:
 
     # ── helpers ──
     def cells(self, size_cm: float) -> int:
-        return max(1, ceil(size_cm / self.cell - 1e-9))
+        return max(1, int(np.ceil(size_cm / self.cell - 1e-9)))
+
+    @property
+    def grid_length_cm(self) -> float:
+        return self.nx * self.cell
+
+    @property
+    def grid_width_cm(self) -> float:
+        return self.ny * self.cell
 
     @property
     def envelope_volume_cm3(self) -> float:
@@ -47,7 +60,8 @@ class HeightMap:
 
     # ── placement search ──
     def candidates(self, l: float, w: float, h: float, min_support: float = 0.7):
-        """모든 (i, j) 원점에 대해 base 높이와 배치 가능 여부를 벡터로 계산."""
+        """모든 (i, j) 원점에 대해 base 높이와 배치 가능 여부를 벡터로 계산.
+        지지 = 밑면 셀 중 (높이 == base) 이면서 (base > 0 이거나 팔레트 바닥인) 셀의 비율."""
         li, lj = self.cells(l), self.cells(w)
         if li > self.nx or lj > self.ny:
             return None
@@ -55,8 +69,18 @@ class HeightMap:
         base = win.max(axis=(2, 3))
         limwin = sliding_window_view(self.limit, (li, lj)).min(axis=(2, 3))
         fits = (base + h) <= limwin + 1e-6
-        support = (win >= base[:, :, None, None] - 1e-6).mean(axis=(2, 3))
-        ok = fits & ((base <= 1e-6) | (support >= min_support))
+        # 격자 반올림과 별개로 실제 cm 경계 검사 (팔레트 + 오버행 허용치)
+        ov = self.overhang
+        xs = (np.arange(base.shape[0]) - self.geom.ox) * self.cell
+        ys = (np.arange(base.shape[1]) - self.geom.oy) * self.cell
+        in_x = (xs >= -ov["x0"] - 1e-6) & (xs + l <= self.length_cm + ov["x1"] + 1e-6)
+        in_y = (ys >= -ov["y0"] - 1e-6) & (ys + w <= self.width_cm + ov["y1"] + 1e-6)
+        fits &= in_x[:, None] & in_y[None, :]
+        b = base[:, :, None, None]
+        floor_win = sliding_window_view(self.floor, (li, lj))
+        supported = (win >= b - 1e-6) & (floor_win | (b > 1e-6))
+        support = supported.mean(axis=(2, 3))
+        ok = fits & (support >= min_support)
         return base, ok
 
     def best_position(self, l: float, w: float, h: float, min_support: float = 0.7):
@@ -78,7 +102,8 @@ class HeightMap:
         self.height[i:i + li, j:j + lj] = z + h
         if not piece.stackable:
             self.limit[i:i + li, j:j + lj] = np.minimum(self.limit[i:i + li, j:j + lj], z + h)
-        p = Placement(pid=piece.pid, awb=piece.awb, x=i * self.cell, y=j * self.cell, z=z,
+        p = Placement(pid=piece.pid, awb=piece.awb,
+                      x=(i - self.geom.ox) * self.cell, y=(j - self.geom.oy) * self.cell, z=z,
                       l=l, w=w, h=h, weight=piece.weight)
         self.placements.append(p)
         self.placed_weight += piece.weight

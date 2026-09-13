@@ -7,7 +7,7 @@ from .models import Piece
 
 BOOKING_COLUMNS = ["awb", "qty", "length_cm", "width_cm", "height_cm", "weight_kg", "volume_cbm", "shc"]
 PLAN_COLUMNS = ["uld", "type", "contour", "awbs"]
-EST_RATIO = (1.25, 1.0, 0.8)     # 치수 없는 화물의 추정 박스 비율 (L:W:H)
+EST_RATIO = (1.0, 1.0, 1.0)      # 치수 없는 화물의 추정 박스 비율 (L:W:H) = 정육면체
 NON_STACK_SHC = {"FRA", "TOP", "NST"}   # 위에 못 쌓는 SHC (예시)
 
 

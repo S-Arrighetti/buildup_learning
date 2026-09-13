@@ -74,6 +74,8 @@ def to_dict(rep: CheckReport) -> dict:
                           "l": x.piece.l, "w": x.piece.w, "h": x.piece.h, "weight": x.piece.weight}
                          for x in u.result.unplaced],
             "grid": {"cell_cm": u.hm.cell, "nx": u.hm.nx, "ny": u.hm.ny,
+                     "origin_cell": [u.hm.geom.ox, u.hm.geom.oy],   # 팔레트 모서리가 있는 셀
+                     "pallet_cm": [u.hm.length_cm, u.hm.width_cm], "overhang_cm": u.hm.overhang,
                      "height": u.hm.height.round(1).tolist(), "limit": u.hm.limit.round(1).tolist()},
         } for u in rep.ulds],
         "unassigned": rep.unassigned,
