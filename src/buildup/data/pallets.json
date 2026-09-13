@@ -1,0 +1,7 @@
+{
+  "_note": "예시값. 실제 운용 한도는 항공사/기체별 매뉴얼 기준으로 덮어쓸 것.",
+  "PMC": { "length_cm": 318, "width_cm": 244, "max_gross_kg": 6804, "tare_kg": 110 },
+  "PAG": { "length_cm": 318, "width_cm": 224, "max_gross_kg": 6033, "tare_kg": 100 },
+  "PLA": { "length_cm": 318, "width_cm": 153, "max_gross_kg": 3175, "tare_kg": 80 },
+  "PKC": { "length_cm": 153, "width_cm": 156, "max_gross_kg": 1588, "tare_kg": 60 }
+}
