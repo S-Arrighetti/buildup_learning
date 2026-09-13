@@ -31,6 +31,7 @@ class Placement:
     w: float
     h: float
     weight: float
+    estimated: bool = False
 
     def to_dict(self) -> dict:
         return self.__dict__.copy()

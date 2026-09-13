@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>buildup viewer</title>
+<style>
+  :root { --bg:#f6f7f9; --panel:#fff; --line:#d9dde3; --text:#1f2429; --muted:#6b7480;
+          --ok:#1f8a4c; --risk:#b7791f; --over:#c0392b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text);
+         font:14px/1.45 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  header { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .badge { padding:2px 10px; border-radius:999px; color:#fff; font-weight:600; font-size:12px; }
+  .OK { background:var(--ok); } .RISK { background:var(--risk); } .OVER { background:var(--over); }
+  #drop { border:1.5px dashed var(--line); border-radius:8px; padding:8px 14px; color:var(--muted);
+          background:var(--panel); cursor:pointer; }
+  #drop.over { border-color:#4a7bd0; color:#4a7bd0; }
+  .layout { display:grid; grid-template-columns: minmax(320px, 1fr) minmax(0, 2fr); gap:16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { padding:5px 6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  td.num, th.num { text-align:right; }
+  tr.uld { cursor:pointer; } tr.uld:hover { background:#f0f3f7; } tr.uld.sel { background:#e6eefb; }
+  .wrap { overflow-x:auto; }
+  .views { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+  @media (max-width: 1200px) { .views { grid-template-columns: 1fr; } }
+  canvas { width:100%; height:auto; background:#fafbfc; border:1px solid var(--line); border-radius:6px; display:block; }
+  .cap { color:var(--muted); font-size:12px; margin:4px 0 8px; }
+  .ctrl { display:flex; align-items:center; gap:10px; margin:8px 0; flex-wrap:wrap; }
+  input[type=range] { flex:1; min-width:160px; }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; margin:8px 0; }
+  .sw { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-2px; margin-right:4px; border:1px solid rgba(0,0,0,.25); }
+  #tip { position:fixed; pointer-events:none; background:#222; color:#fff; padding:6px 8px; border-radius:6px;
+         font-size:12px; display:none; z-index:10; white-space:pre; }
+  ul { margin:6px 0; padding-left:18px; } li { margin:2px 0; }
+  .sec h3 { font-size:13px; color:var(--muted); margin:12px 0 4px; text-transform:uppercase; letter-spacing:.04em; }
+  .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>buildup viewer</h1>
+  <span id="overall" class="badge" hidden></span>
+  <label id="drop">결과 JSON 을 여기에 끌어다 놓거나 클릭해서 선택
+    <input id="file" type="file" accept=".json,application/json" hidden></label>
+  <span id="fname" class="muted"></span>
+</header>
+
+<div class="layout">
+  <div class="panel">
+    <div class="wrap">
+      <table id="ulds">
+        <thead><tr><th>ULD</th><th>TYPE</th><th>CONTOUR</th><th class="num">PCS</th><th class="num">WT kg</th>
+          <th class="num">UTIL</th><th class="num">HMAX</th><th>STATUS</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="sec" id="global"></div>
+  </div>
+
+  <div class="panel" id="detail" hidden>
+    <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <strong id="d-title" style="font-size:16px"></strong>
+      <span id="d-status" class="badge"></span>
+      <span id="d-note" class="muted"></span>
+    </div>
+    <div class="ctrl">
+      <span class="muted">층 보기 (z &lt;)</span>
+      <input id="zmax" type="range" min="0" max="160" value="160" step="5">
+      <span id="zval" class="muted">160 cm</span>
+    </div>
+    <div class="views">
+      <div><canvas id="top" width="700" height="560"></canvas><div class="cap">위에서 본 모습. 점선 = 오버행 허용 범위, 회색 농도 = 컨투어 허용 높이. 마우스를 올리면 상세.</div></div>
+      <div><canvas id="iso" width="700" height="560"></canvas><div class="cap">등각 투영. 위 슬라이더로 층을 벗겨 볼 수 있음.</div></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="sec" id="d-extra"></div>
+  </div>
+</div>
+<div id="tip"></div>
+
+<script>
+const EMBEDDED = /*__DATA__*/null;
+let DATA = null, SEL = 0;
+
+const $ = s => document.querySelector(s);
+const fmt = (n, d=0) => Number(n).toLocaleString(undefined, {maximumFractionDigits:d});
+let HUES = {};   // 선택된 ULD 의 AWB → 색상 (황금각으로 균등 배분, 비슷한 색 방지)
+function hue(s) { return HUES[s] ?? 0; }
+const fill = a => `hsl(${hue(a)} 65% 72%)`, stroke = a => `hsl(${hue(a)} 60% 32%)`;
+
+// ── 로드 ──
+function load(d, name) {
+  DATA = d; SEL = 0;
+  $('#fname').textContent = name || '';
+  const o = $('#overall'); o.textContent = d.overall; o.className = 'badge ' + d.overall; o.hidden = false;
+  renderTable(); renderGlobal(); select(0);
+}
+$('#file').addEventListener('change', e => readFile(e.target.files[0]));
+const drop = $('#drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); readFile(e.dataTransfer.files[0]); });
+function readFile(f) {
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => { try { load(JSON.parse(r.result), f.name); } catch (err) { alert('JSON 파싱 실패: ' + err.message); } };
+  r.readAsText(f, 'utf-8');
+}
+
+// ── 표 ──
+function renderTable() {
+  const tb = $('#ulds tbody'); tb.innerHTML = '';
+  DATA.ulds.forEach((u, i) => {
+    const tr = document.createElement('tr'); tr.className = 'uld'; tr.dataset.i = i;
+    tr.innerHTML = `<td>${u.uld}</td><td>${u.type}</td><td>${u.contour}</td>
+      <td class="num">${u.placed}/${u.assigned}</td><td class="num">${fmt(u.weight_kg)}/${fmt(u.max_net_kg)}</td>
+      <td class="num">${Math.round(u.utilization * 100)}%</td><td class="num">${fmt(u.max_height_cm)}</td>
+      <td><span class="badge ${u.status}">${u.status}</span></td>`;
+    tr.onclick = () => select(i);
+    tb.appendChild(tr);
+  });
+}
+function renderGlobal() {
+  const g = $('#global'); let h = '';
+  const un = Object.entries(DATA.unassigned || {});
+  if (un.length) h += '<h3>플랜에 없는 화물</h3><ul>' + un.map(([a, n]) => `<li>${a}: ${n} pcs</li>`).join('') + '</ul>';
+  if (DATA.unknown_awbs?.length) h += '<h3>booking 에 없는 AWB</h3><ul>' + DATA.unknown_awbs.map(([u, a]) => `<li>${u}: ${a}</li>`).join('') + '</ul>';
+  if (DATA.suggestions?.length) h += '<h3>제안</h3><ul>' + DATA.suggestions.map(s => {
+    const src = s.uld_from || '미배정';
+    return s.uld_to ? `<li>${src} → ${s.uld_to}: ${s.awb} ${s.pcs} pcs 이동 가능</li>` : `<li>${src}: ${s.awb} ${s.pcs} pcs 는 추가 팔레트 필요</li>`;
+  }).join('') + '</ul>';
+  if (DATA.extra_needed?.length) {
+    const vol = DATA.extra_needed.reduce((a, p) => a + p.l * p.w * p.h, 0) / 1e6;
+    const wt = DATA.extra_needed.reduce((a, p) => a + p.weight, 0);
+    h += `<p class="muted">추가 팔레트 필요 합계: ${DATA.extra_needed.length} pcs / ${vol.toFixed(2)} m3 / ${fmt(wt)} kg</p>`;
+  }
+  if (DATA.warnings?.length) h += '<h3>경고</h3><ul>' + DATA.warnings.map(w => `<li>${w}</li>`).join('') + '</ul>';
+  g.innerHTML = h;
+}
+
+// ── 상세 ──
+function select(i) {
+  SEL = i;
+  document.querySelectorAll('tr.uld').forEach(tr => tr.classList.toggle('sel', +tr.dataset.i === i));
+  const u = DATA.ulds[i]; if (!u) { $('#detail').hidden = true; return; }
+  $('#detail').hidden = false;
+  $('#d-title').textContent = `${u.uld} (${u.type}, ${u.contour})`;
+  const s = $('#d-status'); s.textContent = u.status; s.className = 'badge ' + u.status;
+  $('#d-note').textContent = (u.reasons || []).join('; ');
+  const zr = $('#zmax'); const hmax = Math.max(...u.grid.limit.flat(), u.max_height_cm);
+  zr.max = Math.ceil(hmax / 5) * 5 + 5; zr.value = zr.max; $('#zval').textContent = zr.value + ' cm';
+  const awbs = [...new Set(u.placements.map(p => p.awb))];
+  HUES = {}; awbs.forEach((a, k) => HUES[a] = Math.round((k * 137.508 + 20) % 360));
+  $('#legend').innerHTML = awbs.map(a => `<span><i class="sw" style="background:${fill(a)}"></i>${a} (${u.placements.filter(p => p.awb === a).length})</span>`).join('')
+    + (u.estimated_pcs ? '<span class="muted">빗금 = 추정 치수</span>' : '');
+  let ex = '';
+  if (u.unplaced?.length) {
+    const by = {}; u.unplaced.forEach(x => { const k = `${x.awb} (${x.reason})`; by[k] = (by[k] || 0) + 1; });
+    ex += '<h3>못 넣은 화물</h3><ul>' + Object.entries(by).map(([k, n]) => `<li>${k}: ${n} pcs</li>`).join('') + '</ul>';
+  }
+  $('#d-extra').innerHTML = ex;
+  draw();
+}
+$('#zmax').addEventListener('input', e => { $('#zval').textContent = e.target.value + ' cm'; draw(); });
+
+function visible(u) { const z = +$('#zmax').value; return u.placements.filter(p => p.z < z); }
+
+function draw() {
+  const u = DATA.ulds[SEL]; if (!u) return;
+  drawTop(u); drawIso(u);
+}
+
+// 위에서 본 모습
+let TOPXF = null;
+function drawTop(u) {
+  const cv = $('#top'), c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height);
+  const g = u.grid, [L, W] = g.pallet_cm, ov = g.overhang_cm;
+  const gx0 = -ov.x0, gx1 = L + ov.x1, gy0 = -ov.y0, gy1 = W + ov.y1;
+  const pad = 28, sc = Math.min((cv.width - 2 * pad) / (gx1 - gx0), (cv.height - 2 * pad) / (gy1 - gy0));
+  const X = x => pad + (x - gx0) * sc, Y = y => pad + (y - gy0) * sc;
+  TOPXF = { X, Y, sc, gx0, gy0 };
+  // 컨투어 허용 높이 (셀)
+  const lmax = Math.max(...g.limit.flat());
+  for (let i = 0; i < g.nx; i++) for (let j = 0; j < g.ny; j++) {
+    const v = g.limit[i][j] / lmax; c.fillStyle = `rgba(60,70,90,${0.06 + 0.22 * (1 - v)})`;
+    const x = (i - g.origin_cell[0]) * g.cell_cm, y = (j - g.origin_cell[1]) * g.cell_cm;
+    c.fillRect(X(x), Y(y), g.cell_cm * sc + .5, g.cell_cm * sc + .5);
+  }
+  // 오버행 범위 (점선), 팔레트 (실선)
+  c.setLineDash([5, 4]); c.strokeStyle = '#8a94a3'; c.lineWidth = 1;
+  c.strokeRect(X(gx0), Y(gy0), (gx1 - gx0) * sc, (gy1 - gy0) * sc);
+  c.setLineDash([]); c.strokeStyle = '#333'; c.lineWidth = 2; c.strokeRect(X(0), Y(0), L * sc, W * sc);
+  // 박스: 낮은 것부터
+  const ps = visible(u).slice().sort((a, b) => a.z - b.z);
+  for (const p of ps) {
+    c.fillStyle = fill(p.awb); c.strokeStyle = stroke(p.awb); c.lineWidth = 1;
+    c.fillRect(X(p.x), Y(p.y), p.l * sc, p.w * sc); c.strokeRect(X(p.x), Y(p.y), p.l * sc, p.w * sc);
+    if (p.estimated) hatch(c, X(p.x), Y(p.y), p.l * sc, p.w * sc);
+    if (p.l * sc > 34 && p.w * sc > 14) {
+      c.fillStyle = '#222'; c.font = '10px system-ui';
+      c.fillText(`${p.pid.split('#')[1] || ''} z${Math.round(p.z)}-${Math.round(p.z + p.h)}`, X(p.x) + 3, Y(p.y) + 11);
+    }
+  }
+  c.fillStyle = '#555'; c.font = '11px system-ui';
+  c.fillText(`${L} × ${W} cm, 오버행 x ${ov.x0}/${ov.x1} y ${ov.y0}/${ov.y1}, 경사 ${g.overhang_slope ?? 1}:1`, pad, cv.height - 8);
+}
+function hatch(c, x, y, w, h) {
+  c.save(); c.beginPath(); c.rect(x, y, w, h); c.clip();
+  c.strokeStyle = 'rgba(0,0,0,.28)'; c.lineWidth = 1; c.beginPath();
+  for (let k = -h; k < w; k += 7) { c.moveTo(x + k, y); c.lineTo(x + k + h, y + h); }
+  c.stroke(); c.restore();
+}
+$('#top').addEventListener('mousemove', e => {
+  const u = DATA?.ulds[SEL]; const tip = $('#tip'); if (!u || !TOPXF) return;
+  const r = e.target.getBoundingClientRect(), k = e.target.width / r.width;
+  const mx = (e.clientX - r.left) * k, my = (e.clientY - r.top) * k;
+  const x = (mx - 28) / TOPXF.sc + TOPXF.gx0, y = (my - 28) / TOPXF.sc + TOPXF.gy0;
+  const hit = visible(u).filter(p => x >= p.x && x <= p.x + p.l && y >= p.y && y <= p.y + p.w).sort((a, b) => b.z - a.z)[0];
+  if (!hit) { tip.style.display = 'none'; return; }
+  tip.style.display = 'block'; tip.style.left = e.clientX + 14 + 'px'; tip.style.top = e.clientY + 14 + 'px';
+  tip.textContent = `${hit.pid}${hit.estimated ? ' (추정)' : ''}\n${hit.l} × ${hit.w} × ${hit.h} cm, ${fmt(hit.weight, 1)} kg\nx ${hit.x}  y ${hit.y}  z ${hit.z} → ${hit.z + hit.h}`;
+});
+$('#top').addEventListener('mouseleave', () => $('#tip').style.display = 'none');
+
+// 등각 투영
+function drawIso(u) {
+  const cv = $('#iso'), c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height);
+  const g = u.grid, [L, W] = g.pallet_cm, ov = g.overhang_cm, H = Math.max(...g.limit.flat());
+  const cos = 0.866, sin = 0.5;
+  const px = (x, y) => (x - y) * cos, py = (x, y, z) => (x + y) * sin - z;
+  const xs = [px(-ov.x0, W + ov.y1), px(L + ov.x1, -ov.y0)], ys = [py(-ov.x0, -ov.y0, H), py(L + ov.x1, W + ov.y1, 0)];
+  const pad = 24, sc = Math.min((cv.width - 2 * pad) / (xs[1] - xs[0]), (cv.height - 2 * pad) / (ys[1] - ys[0]));
+  const P = (x, y, z) => [pad + (px(x, y) - xs[0]) * sc, pad + (py(x, y, z) - ys[0]) * sc];
+  const poly = (pts, f, s) => { c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(...p) : c.moveTo(...p)); c.closePath();
+    if (f) { c.fillStyle = f; c.fill(); } if (s) { c.strokeStyle = s; c.stroke(); } };
+  // 바닥
+  c.lineWidth = 1; c.setLineDash([5, 4]);
+  poly([P(-ov.x0, -ov.y0, 0), P(L + ov.x1, -ov.y0, 0), P(L + ov.x1, W + ov.y1, 0), P(-ov.x0, W + ov.y1, 0)], null, '#8a94a3');
+  c.setLineDash([]);
+  poly([P(0, 0, 0), P(L, 0, 0), P(L, W, 0), P(0, W, 0)], '#e9ecf0', '#333');
+  // 컨투어 높이 가이드
+  c.strokeStyle = '#c3c9d2'; c.setLineDash([3, 4]);
+  for (const [x, y] of [[0, 0], [L, 0], [L, W], [0, W]]) { c.beginPath(); c.moveTo(...P(x, y, 0)); c.lineTo(...P(x, y, H)); c.stroke(); }
+  poly([P(0, 0, H), P(L, 0, H), P(L, W, H), P(0, W, H)], null, '#c3c9d2'); c.setLineDash([]);
+  // 박스 (화가 알고리즘)
+  const ps = visible(u).slice().sort((a, b) => (a.x + a.y + a.z) - (b.x + b.y + b.z) || a.z - b.z);
+  for (const p of ps) {
+    const x0 = p.x, x1 = p.x + p.l, y0 = p.y, y1 = p.y + p.w, z0 = p.z, z1 = p.z + p.h;
+    const f = fill(p.awb), s = stroke(p.awb), hh = hue(p.awb);
+    poly([P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)], f, s);                       // 윗면
+    poly([P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1)], `hsl(${hh} 55% 58%)`, s);   // +x 면
+    poly([P(x0, y1, z0), P(x1, y1, z0), P(x1, y1, z1), P(x0, y1, z1)], `hsl(${hh} 50% 48%)`, s);   // +y 면
+  }
+  c.fillStyle = '#555'; c.font = '11px system-ui';
+  c.fillText(`컨투어 최대 ${H} cm, 적재 최고 ${fmt(u.max_height_cm)} cm`, pad, cv.height - 8);
+}
+
+if (EMBEDDED) load(EMBEDDED, '(내장 데이터)');
+</script>
+</body>
+</html>

@@ -25,6 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--contours", help="컨투어 정의 JSON (기본 내장)")
     c.add_argument("--risk", type=float, default=0.85, help="RISK 판정 용적률 (기본 0.85)")
     c.add_argument("--overhang", type=float, default=None, help="오버행 허용 cm (전 면 동일, 컨투어 설정 덮어씀)")
+    c.add_argument("--overhang-slope", type=float, default=None,
+                   help="오버행 1cm 당 떠야 하는 높이 cm (기본 1.0 = 1:1, 0 = 제한 없음)")
+    c.add_argument("--html", help="결과가 내장된 뷰어 HTML 저장 (더블클릭으로 열기)")
 
     g = sub.add_parser("gen", help="합성 booking.csv / plan.csv 생성")
     g.add_argument("--seed", type=int, default=0)
@@ -47,12 +50,18 @@ def main(argv: list[str] | None = None) -> int:
     cfg = PackConfig(cell_cm=a.cell, min_support=a.support, allow_tip=a.tip, order=a.order)
     rep = check(read_booking(a.booking), read_plan(a.plan), cfg,
                 load_pallets(a.pallets), load_contours(a.contours), risk_threshold=a.risk,
-                overhang_cm=a.overhang)
+                overhang_cm=a.overhang, overhang_slope=a.overhang_slope)
     print(format_text(rep))
-    if a.json:
-        with open(a.json, "w", encoding="utf-8") as f:
-            json.dump(to_dict(rep), f, ensure_ascii=False, indent=1)
-        print(f"\nJSON → {a.json}")
+    if a.json or a.html:
+        d = to_dict(rep)
+        if a.json:
+            with open(a.json, "w", encoding="utf-8") as f:
+                json.dump(d, f, ensure_ascii=False, indent=1)
+            print(f"\nJSON → {a.json}")
+        if a.html:
+            from .viewer import write_html
+            write_html(d, a.html)
+            print(f"HTML → {a.html}")
     return 0 if rep.overall != "OVER" else 2
 
 

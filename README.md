@@ -14,7 +14,7 @@ Booking list와 예비 플랜(팔레트별 AWB 배정)을 받아서, 각 팔레�
 # 설치 없이
 set PYTHONPATH=src            # PowerShell: $env:PYTHONPATH="src"
 python -m buildup gen --seed 1 --out data/samples        # 합성 샘플 생성
-python -m buildup check data/samples/booking.csv data/samples/plan.csv --json out.json
+python -m buildup check data/samples/booking.csv data/samples/plan.csv --html out.html
 
 # 또는
 pip install -e .
@@ -58,7 +58,9 @@ PMC10083   PMC   LD_160_FLAT        2     20/36      1439/6694    64%    158  OV
 ```
 
 - OK / RISK(용적률 85% 이상, 추정 치수 포함 75% 이상, 중량 95% 이상) / OVER(못 넣은 pcs 있음)
-- `--json` 으로 저장하면 팔레트별 배치 좌표(x, y, z, l, w, h; 팔레트 모서리 기준, 음수 = 오버행)와 높이맵이 같이 나옴 → 3D 뷰어 입력용
+- `--html out.html` 로 저장하면 결과가 내장된 뷰어가 나온다. 서버 없이 더블클릭으로 열리고, 팔레트별 위에서 본 배치도와 등각 3D, 층 벗겨보기, 마우스 오버 상세, 이동 제안을 보여준다.
+  뷰어 껍데기는 `src/buildup/data/viewer.html` 이고, 여기에 `--json` 결과를 끌어다 놓아도 된다.
+- `--json` 으로 저장하면 팔레트별 배치 좌표(x, y, z, l, w, h; 팔레트 모서리 기준, 음수 = 오버행)와 높이맵이 나옴 → 3D Build-Up 연동용
 
 ## 판정 방식
 
@@ -66,8 +68,10 @@ PMC10083   PMC   LD_160_FLAT        2     20/36      1439/6694    64%    158  OV
 격자는 팔레트보다 컨투어의 오버행 허용치(`overhang_cm`, 예시 10cm)만큼 넓고, 팔레트 밖 바닥은 지지력이 없다.
 박스는 큰 것부터, 가장 낮게 놓이는 자리 → 뒤쪽 → 왼쪽 순으로 놓는다.
 밑면 지지 70% 미만(오버행 포함), 컨투어 초과, 오버행 허용치 밖, 중량 초과면 못 놓는다.
-`--overhang N` 으로 모든 컨투어의 오버행 허용치를 한 번에 바꿀 수 있다 (0 = 불허).
-치수 없는 화물은 CBM/개수로 정육면체(1:1:1)로 추정한다 (`booking.py` 의 `EST_RATIO`).
+오버행 경사는 1:1 이다. 튀어나온 거리만큼 박스 바닥이 팔레트 바닥에서 떠 있어야 한다 (10cm 오버행 → z ≥ 10cm).
+그래서 바닥층은 오버행이 없고, 위층으로 갈수록 허용 폭이 넓어진다. 컨투어의 `overhang_slope` (기본 1.0, 0 = 제한 없음).
+`--overhang N`, `--overhang-slope R` 로 모든 컨투어의 오버행 설정을 한 번에 바꿀 수 있다.
+치수 없는 화물은 CBM/개수로 1.25:1:0.8 비율 박스로 추정한다 (`booking.py` 의 `EST_RATIO`).
 휴리스틱이라 실제 숙련자보다 덜 채울 수 있다 → OK 는 믿어도 되고, OVER 는 "빡빡하다"로 읽을 것.
 
 ## 구조
@@ -81,6 +85,7 @@ src/buildup/
   booking.py    booking / plan 읽기, 치수 추정, Piece 펼치기
   checker.py    팔레트별 판정 + 이동/추가 팔레트 제안
   report.py     텍스트 / JSON 출력
+  viewer.py     결과 내장 HTML 뷰어 생성 (data/viewer.html 템플릿)
   synth.py      합성 데이터 생성
   data/         pallets.json, contours.json (예시값)
 tests/          python -m unittest discover tests

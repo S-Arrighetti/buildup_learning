@@ -86,8 +86,8 @@ def _status(res: PackResult, max_net: float, est_pcs: int, risk: float, est_risk
 def check(booking: list[BookingLine], plan: list[PlanEntry], cfg: PackConfig | None = None,
           pallets: dict[str, ULDSpec] | None = None, contours: dict[str, Contour] | None = None,
           risk_threshold: float = 0.85, est_risk_threshold: float = 0.75,
-          overhang_cm: float | None = None) -> CheckReport:
-    """overhang_cm 을 주면 모든 컨투어의 오버행 허용치를 그 값으로 덮어쓴다."""
+          overhang_cm: float | None = None, overhang_slope: float | None = None) -> CheckReport:
+    """overhang_cm / overhang_slope 를 주면 모든 컨투어의 오버행 설정을 그 값으로 덮어쓴다."""
     cfg = cfg or PackConfig()
     pallets = pallets or load_pallets()
     contours = contours or load_contours()
@@ -108,10 +108,10 @@ def check(booking: list[BookingLine], plan: list[PlanEntry], cfg: PackConfig | N
         if contour is None:
             warnings.append(f"{e.uld}: 모르는 컨투어 {e.contour} → LD_160_FLAT 사용")
             contour = contours["LD_160_FLAT"]
-        if overhang_cm is not None:
-            contour = with_overhang(contour, overhang_cm)
+        if overhang_cm is not None or overhang_slope is not None:
+            contour = with_overhang(contour, overhang_cm, overhang_slope)
         hm = HeightMap(spec.length_cm, spec.width_cm, limit_map(spec, contour, cfg.cell_cm),
-                       cfg.cell_cm, contour.overhang)
+                       cfg.cell_cm, contour.overhang, contour.overhang_slope)
 
         assigned: list[Piece] = []
         for awb, q in e.awbs:

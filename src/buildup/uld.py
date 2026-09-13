@@ -28,6 +28,7 @@ class Contour:
     side: str | None            # 깎인 면: "x0" | "x1" | "y0" | "y1" | None
     profile: tuple[tuple[float, float], ...]   # (팔레트 가장자리에서의 거리 cm, 허용 높이). 음수 = 오버행 구역
     overhang: dict[str, float]  # 면별 허용 오버행 cm
+    overhang_slope: float = 1.0  # 오버행 1cm 당 바닥에서 떠야 하는 높이 cm (1.0 = 45도, 0 = 제한 없음)
 
 
 def parse_overhang(v) -> dict[str, float]:
@@ -56,12 +57,15 @@ def load_contours(path: str | None = None) -> dict[str, Contour]:
     raw.pop("_note", None)
     return {k: Contour(name=k, height_cm=v["height_cm"], side=v.get("side"),
                        profile=tuple(tuple(p) for p in v.get("profile", [])),
-                       overhang=parse_overhang(v.get("overhang_cm")))
+                       overhang=parse_overhang(v.get("overhang_cm")),
+                       overhang_slope=float(v.get("overhang_slope", 1.0)))
             for k, v in raw.items()}
 
 
-def with_overhang(c: Contour, overhang_cm: float) -> Contour:
-    return Contour(c.name, c.height_cm, c.side, c.profile, parse_overhang(overhang_cm))
+def with_overhang(c: Contour, overhang_cm: float | None = None, slope: float | None = None) -> Contour:
+    return Contour(c.name, c.height_cm, c.side, c.profile,
+                   c.overhang if overhang_cm is None else parse_overhang(overhang_cm),
+                   c.overhang_slope if slope is None else float(slope))
 
 
 @dataclass(frozen=True)

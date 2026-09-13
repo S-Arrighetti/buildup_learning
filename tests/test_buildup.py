@@ -67,7 +67,7 @@ class HeightMapTest(unittest.TestCase):
 
     def test_overhang_allowed_with_support(self):
         # 100x100 팔레트, 오버행 10cm 전 면 → 격자 120x120. 110 길이 박스는 오버행으로 들어감 (지지 91%)
-        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=10)
+        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=10, overhang_slope=0)
         self.assertEqual((hm.nx, hm.ny), (24, 24))
         # 팔레트 밖 바닥은 지지력 없음: 10x10 박스를 오버행 구역에만 놓는 건 불가
         base, ok = hm.candidates(10, 10, 10)
@@ -80,8 +80,19 @@ class HeightMapTest(unittest.TestCase):
         p = hm.place(box("a", 110, 50, 30), i, j, z, 110, 50, 30)
         self.assertLessEqual(p.x, 0)               # 팔레트 모서리 기준 음수 = 튀어나감
 
+    def test_overhang_slope_1_to_1(self):
+        # 1:1 경사: 10cm 튀어나오려면 바닥이 10cm 이상 떠 있어야 한다
+        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=10, overhang_slope=1.0)
+        self.assertIsNone(hm.best_position(110, 50, 30))            # 바닥에서는 오버행 불가
+        hm.place(box("base", 100, 100, 10), 2, 2, 0, 100, 100, 10)  # 10cm 받침
+        self.assertIsNotNone(hm.best_position(110, 50, 30))         # z=10 → 10cm 오버행 OK
+        hm2 = HeightMap(100, 100, 160, cell_cm=5, overhang=10, overhang_slope=1.0)
+        hm2.place(box("base", 100, 100, 5), 2, 2, 0, 100, 100, 5)   # 5cm 받침
+        self.assertIsNone(hm2.best_position(120, 50, 30))           # 한쪽 최소 10cm 튀어나감 > z=5 → 불가
+        self.assertIsNotNone(hm2.best_position(110, 50, 30))        # 양쪽 5cm 씩이면 z=5 로 OK
+
     def test_overhang_support_threshold(self):
-        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=50)
+        hm = HeightMap(100, 100, 160, cell_cm=5, overhang=50, overhang_slope=0)
         # 100 길이 박스를 절반 걸치면 지지 50% → 불가, 30% 만 걸치면 70% → 가능
         base, ok = hm.candidates(100, 50, 30, min_support=0.7)
         ox = hm.geom.ox
@@ -187,6 +198,10 @@ class CheckerTest(unittest.TestCase):
         self.assertIn("전체 판정", txt)
         d = to_dict(rep)
         self.assertEqual(len(d["ulds"]), len(rep.ulds))
+        from buildup.viewer import render_html
+        html = render_html(d)
+        self.assertIn('"overall"', html)
+        self.assertNotIn("/*__DATA__*/", html)
 
 
 if __name__ == "__main__":
