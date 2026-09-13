@@ -116,6 +116,9 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default="runs/ppo")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", help="이어서 학습할 model.zip")
+    ap.add_argument("--ent-coef", type=float, default=0.001,
+                    help="엔트로피 계수. 행동 1,800개라 0.01 이면 보너스가 보상을 압도해 무작위로 수렴함")
+    ap.add_argument("--lr", type=float, default=3e-4)
     a = ap.parse_args(argv)
 
     torch.set_num_threads(max(1, min(4, os.cpu_count() or 1)))
@@ -123,11 +126,11 @@ def main(argv=None) -> int:
     vec_cls = SubprocVecEnv if a.envs > 1 else DummyVecEnv
     env = make_vec_env(make_env(a.cell, a.min_dim, a.start_dim), n_envs=a.envs, seed=a.seed, vec_env_cls=vec_cls)
     if a.resume:
-        model = MaskablePPO.load(a.resume, env=env)
+        model = MaskablePPO.load(a.resume, env=env, ent_coef=a.ent_coef, learning_rate=a.lr)
     else:
         model = MaskablePPO(
             "MultiInputPolicy", env, seed=a.seed, verbose=0,
-            n_steps=256, batch_size=512, n_epochs=4, learning_rate=3e-4, ent_coef=0.01,
+            n_steps=256, batch_size=512, n_epochs=4, learning_rate=a.lr, ent_coef=a.ent_coef,
             gamma=0.99, gae_lambda=0.95, clip_range=0.2,
             policy_kwargs=dict(features_extractor_class=GridExtractor,
                                features_extractor_kwargs=dict(features_dim=256),

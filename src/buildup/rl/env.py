@@ -32,8 +32,10 @@ class BuildUpEnv(gym.Env):
 
     def __init__(self, pallet: str = "PMC", contour: str = "LD_160_FLAT", cell_cm: float = 10.0,
                  min_dim: int = 10, max_dim: int = 80, min_support: float = 0.7,
-                 alternate_pallets: tuple[str, ...] = ("PMC", "PAG"), seed: int | None = None):
+                 alternate_pallets: tuple[str, ...] = ("PMC", "PAG"), seed: int | None = None,
+                 reward_scale: float = 100.0):
         super().__init__()
+        self.reward_scale = reward_scale   # 부피 비율(0~1)에 곱함. 엔트로피 보너스에 묻히지 않게 100 = 퍼센트 단위
         self.pallets = load_pallets()
         self.contour = load_contours()[contour]
         self.cell = cell_cm
@@ -138,7 +140,7 @@ class BuildUpEnv(gym.Env):
         if mask[int(action)]:
             z = float(self.hm.height[i:i + self.hm.cells(l), j:j + self.hm.cells(w)].max())
             self.hm.place(p, int(i), int(j), z, l, w, p.h)
-            reward = p.volume_cm3 / self.hm.envelope_volume_cm3
+            reward = p.volume_cm3 / self.hm.envelope_volume_cm3 * self.reward_scale
         self.idx += 1
         self._mask_cache = None
         self._skip_unplaceable()
